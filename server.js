@@ -1,45 +1,75 @@
-// Simple CloudPRNT-style server for Aldo's
+// ==============================
+// Aldo's CloudPRNT Basic Server
+// ==============================
+
 const express = require("express");
 const app = express();
 
-const PORT = process.env.PORT || 3000;
+// Render asigna PORT automáticamente
+const PORT = process.env.PORT || 10000;
+
+// Último ticket enviado desde el kiosco
+let lastTicket = null;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Home – just to comprobar que el servidor está vivo
+// =======================================
+// 1) Home — para probar que el server vive
+// =======================================
 app.get("/", (req, res) => {
-  res.send("✅ Aldo's CloudPRNT basic server is running.");
+  res.send("✔ Aldo’s CloudPRNT server is running.");
 });
 
-// Status endpoint – la impresora puede preguntar si hay trabajo
+// =======================================
+// 2) Printer Status — La impresora pregunta aquí
+// =======================================
 app.get("/cloudprnt/status", (req, res) => {
-  // Más adelante aquí vamos a decir si hay tickets en cola
+  const ready = lastTicket ? true : false;
+
   res.json({
     ok: true,
-    readyToPrint: false,
-    message: "Server online, no jobs in queue yet."
+    readyToPrint: ready,
+    message: ready ? "Job ready" : "No jobs pending"
   });
 });
 
-// Job endpoint – aquí la impresora pediría el ticket
+// =======================================
+// 3) Printer asks for the job here
+// =======================================
 app.get("/cloudprnt/job", (req, res) => {
-  // De momento, no mandamos nada a imprimir
-  res.json({
-    hasJob: false,
-    contentType: "text/plain",
-    content: "",
-    message: "No jobs yet."
-  });
+  if (!lastTicket) {
+    return res.json({ jobReady: false });
+  }
+
+  const job = {
+    jobReady: true,
+    job: Buffer.from(lastTicket).toString("base64"),
+    type: "escpos"
+  };
+
+  lastTicket = null; // Elimina el job después de entregarlo
+
+  res.json(job);
 });
 
-// Endpoint para que tu app web mande órdenes (luego lo conectamos)
-app.post("/api/orders", (req, res) => {
-  console.log("🧾 New order received from kiosk:", req.body);
-  // Aquí después guardaremos la orden y la pondremos en la cola de impresión
-  res.json({ ok: true, message: "Order received (demo mode)." });
+// =======================================
+// 4) Kiosk app sends order here
+// =======================================
+app.post("/submit", (req, res) => {
+  const { ticket } = req.body;
+
+  if (!ticket) {
+    return res.status(400).json({ error: "Missing ticket" });
+  }
+
+  lastTicket = ticket;
+  res.json({ ok: true, message: "Ticket stored for printer." });
 });
 
+// =======================================
+// Start server
+// =======================================
 app.listen(PORT, () => {
-  console.log(`🚀 Aldo's CloudPRNT server listening on port ${PORT}`);
+  console.log("🚀 Aldo’s CloudPRNT Server running on", PORT);
 });
